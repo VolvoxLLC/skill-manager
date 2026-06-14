@@ -1,0 +1,82 @@
+name: SkillDeck
+
+options:
+  bundleIdPrefix: com.volvox
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  SkillDeckKit:
+    path: .
+
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  SkillDeck:
+    type: application
+    platform: macOS
+    sources:
+      - path: SkillDeck
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.volvox.SkillDeck
+        PRODUCT_NAME: SkillDeck
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_ENTITLEMENTS: SkillDeck/SkillDeck.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        INFOPLIST_KEY_CFBundleDisplayName: SkillDeck
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Volvox LLC. All rights reserved."
+        COMBINE_HIDPI_IMAGES: YES
+    dependencies:
+      - package: SkillDeckKit
+        product: SkillDeckCore
+      - package: SkillDeckKit
+        product: SkillDeckSources
+      - package: SkillDeckKit
+        product: SkillDeckAgents
+      - package: SkillDeckKit
+        product: SkillDeckPersistence
+      - package: SkillDeckKit
+        product: SkillDeckServices
+      - package: SkillDeckKit
+        product: SkillDeckTelemetry
+
+  SkillDeckTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: SkillDeckTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.volvox.SkillDeckTests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: SkillDeck
+      - package: SkillDeckKit
+        product: SkillDeckCore
+      - package: SkillDeckKit
+        product: SkillDeckSources
+
+schemes:
+  SkillDeck:
+    build:
+      targets:
+        SkillDeck: all
+        SkillDeckTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - SkillDeckTests
