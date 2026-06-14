@@ -6,10 +6,12 @@ struct SkillDeckApp: App {
         WindowGroup {
             MainWindowView()
         }
+        .commands {
+            SkillDeckCommands()
+        }
 
         Settings {
-            Text("Settings")
-                .padding()
+            SkillDeckSettingsView()
         }
     }
 }
