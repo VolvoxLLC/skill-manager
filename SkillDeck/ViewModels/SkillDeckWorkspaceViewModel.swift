@@ -21,12 +21,12 @@ protocol InstalledSkillProviding: Sendable {
 }
 
 struct FileSystemInstalledSkillProvider: InstalledSkillProviding {
-    private let scanner: InstalledSkillScanner
-    private let roots: [InstalledSkillScanRoot]
+    private let scanner: SkillDeckServices.InstalledSkillScanner
+    private let roots: [SkillDeckServices.InstalledSkillScanRoot]
 
     init(
-        scanner: InstalledSkillScanner = InstalledSkillScanner(),
-        roots: [InstalledSkillScanRoot] = InstalledSkillScanner.defaultRoots()
+        scanner: SkillDeckServices.InstalledSkillScanner = SkillDeckServices.InstalledSkillScanner(),
+        roots: [SkillDeckServices.InstalledSkillScanRoot] = SkillDeckServices.InstalledSkillScanner.defaultRoots()
     ) {
         self.scanner = scanner
         self.roots = roots

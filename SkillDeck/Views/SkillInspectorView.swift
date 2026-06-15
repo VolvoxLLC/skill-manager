@@ -9,46 +9,44 @@ struct SkillInspectorView: View {
     var body: some View {
         if let skill = workspace.selectedSkill {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    LiquidGlassPanel {
-                        header(for: skill)
-                            .padding(16)
-                    }
-                    LiquidGlassPanel {
-                        installControls
-                            .padding(16)
-                    }
-                    LiquidGlassPanel {
-                        metadata(for: skill)
-                            .padding(16)
-                    }
-                    LiquidGlassPanel {
-                        skillPreview(skill.skillMarkdown)
-                            .padding(16)
-                    }
+                VStack(alignment: .leading, spacing: Theme.glassSpacing) {
+                    header(for: skill)
+                        .padding(Theme.contentPadding)
+                        .glassCard()
+                    installControls
+                        .padding(Theme.contentPadding)
+                        .glassCard()
+                    metadata(for: skill)
+                        .padding(Theme.contentPadding)
+                        .glassCard()
+                    skillPreview(skill.skillMarkdown)
+                        .padding(Theme.contentPadding)
+                        .glassCard()
                 }
+                .padding(Theme.contentPadding)
             }
         } else {
-            LiquidGlassPanel {
-                VStack(alignment: .leading, spacing: 12) {
-                    Image(systemName: "sidebar.right")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(Color.systemAccent)
-                    Text("No skill selected")
-                        .font(.system(.title3, design: .rounded, weight: .semibold))
-                    Text("Click any catalog, source, or installed skill to inspect metadata, SKILL.md content, and install state here.")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(18)
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: "square.dashed")
+                    .font(.largeTitle)
+                    .foregroundStyle(.tint)
+                Text("No skill selected")
+                    .font(.headline)
+                Text("Select a skill to preview metadata, installation targets, and update state.")
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.contentPadding)
+            .glassCard()
+            .padding(Theme.contentPadding)
         }
     }
 
     private func header(for skill: SkillDetail) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(skill.summary.name)
-                .font(.system(.title2, design: .rounded, weight: .semibold))
+                .font(.title2.weight(.semibold))
             Text(skill.summary.description)
                 .foregroundStyle(.secondary)
             HStack {
@@ -58,12 +56,13 @@ struct SkillInspectorView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var installControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Install")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .font(.headline)
 
             if workspace.installTargets.isEmpty {
                 Text("Grant a target folder before installing.")
@@ -88,6 +87,7 @@ struct SkillInspectorView: View {
                 .buttonStyle(.borderedProminent)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func metadata(for skill: SkillDetail) -> some View {
@@ -108,12 +108,13 @@ struct SkillInspectorView: View {
                     .lineLimit(1)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func skillPreview(_ markdown: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SKILL.md")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .font(.headline)
             Text(markdown)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
@@ -121,6 +122,7 @@ struct SkillInspectorView: View {
                 .padding(12)
                 .background(Color(nsColor: .textBackgroundColor).opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func chooseInstallFolder(kind: AgentTargetKind, displayName: String) {

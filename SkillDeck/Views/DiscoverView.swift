@@ -6,52 +6,31 @@ struct DiscoverView: View {
     @State private var query = ""
 
     var body: some View {
-        LiquidGlassPanel {
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    SkillDeckHeader(
-                        title: "Catalog",
-                        subtitle: "Top downloaded skills appear first. Search narrows the catalog without losing source context."
-                    )
-                    searchBar
-                }
-                .padding(16)
-                .background(.thinMaterial)
-
-                List(Array(displayedSkills.enumerated()), id: \.element.id) { index, skill in
-                    Button {
-                        Task { await workspace.selectSkill(skill.id) }
-                    } label: {
-                        skillRow(skill, rank: index + 1)
-                    }
-                    .buttonStyle(.plain)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .padding(.vertical, 3)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .overlay {
-                    if displayedSkills.isEmpty {
-                        SkillDeckEmptyState(
-                            title: "No catalog results",
-                            systemImage: "magnifyingglass",
-                            description: "SkillDeck could not load skills from skills.sh."
-                        )
-                    }
-                }
-            }
+        VStack(spacing: 0) {
+            searchBar
+            resultsList
         }
     }
 
     private var searchBar: some View {
-        HStack {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
             TextField("Search skills", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit {
-                    Task { await workspace.search(query) }
+                .textFieldStyle(.plain)
+                .onSubmit { Task { await workspace.search(query) } }
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                    Task { await workspace.loadInitialCatalog() }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
                 }
-            Button("Refresh") {
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Clear search")
+            }
+            Button {
                 Task {
                     if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         await workspace.loadInitialCatalog()
@@ -59,8 +38,42 @@ struct DiscoverView: View {
                         await workspace.search(query)
                     }
                 }
+            } label: {
+                Image(systemName: "arrow.clockwise")
             }
+            .buttonStyle(.plain)
+            .help("Refresh catalog")
             .keyboardShortcut("r", modifiers: [.command])
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassCapsule(interactive: true)
+        .padding(Theme.contentPadding)
+    }
+
+    private var resultsList: some View {
+        ScrollView {
+            LazyVStack(spacing: Theme.glassSpacing) {
+                ForEach(Array(displayedSkills.enumerated()), id: \.element.id) { index, skill in
+                    Button {
+                        Task { await workspace.selectSkill(skill.id) }
+                    } label: {
+                        skillCard(skill, rank: index + 1)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.contentPadding)
+            .padding(.bottom, Theme.contentPadding)
+        }
+        .overlay {
+            if displayedSkills.isEmpty {
+                SkillDeckEmptyState(
+                    title: "No catalog results",
+                    systemImage: "sparkle.magnifyingglass",
+                    description: workspace.errorMessage ?? "SkillDeck could not load skills from skills.sh."
+                )
+            }
         }
     }
 
@@ -71,7 +84,7 @@ struct DiscoverView: View {
         return summaries
     }
 
-    private func skillRow(_ skill: SkillSummary, rank: Int) -> some View {
+    private func skillCard(_ skill: SkillSummary, rank: Int) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Text(rank.formatted())
                 .font(.system(.caption, design: .rounded, weight: .semibold))
@@ -80,25 +93,25 @@ struct DiscoverView: View {
                 .background(.thinMaterial, in: Circle())
 
             VStack(alignment: .leading, spacing: 7) {
-                Text(skill.name)
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
-                Text(skill.description.isEmpty ? skill.source.location : skill.description)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                HStack {
-                    SkillMetricPill(text: skill.source.location, systemImage: "link")
+                HStack(alignment: .firstTextBaseline) {
+                    Text(skill.name)
+                        .font(.headline)
+                    Spacer()
                     if let installCount = skill.installCount {
-                        SkillMetricPill(text: "\(installCount.formatted()) installs", systemImage: "arrow.down.circle")
+                        Label(installCount.formatted(), systemImage: "arrow.down.circle")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.tint)
                     }
                 }
+                Text(skill.description.isEmpty ? skill.source.location : skill.description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                SkillMetricPill(text: skill.source.location, systemImage: "link")
             }
-            Spacer(minLength: 8)
         }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.glassStroke)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.contentPadding)
+        .glassCard(interactive: true)
     }
 }

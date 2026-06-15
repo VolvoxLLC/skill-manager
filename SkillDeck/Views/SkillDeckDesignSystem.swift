@@ -2,10 +2,6 @@ import AppKit
 import SwiftUI
 
 extension Color {
-    static var systemAccent: Color {
-        Color(nsColor: .controlAccentColor)
-    }
-
     static var glassStroke: Color {
         Color(nsColor: .separatorColor).opacity(0.34)
     }

@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run SkillDeck (Debug)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/SkillDeck.app/Contents/MacOS/SkillDeck",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build-skilldeck",
+      "presentation": {
+        "group": "app",
+        "order": 1
+      }
+    },
+    {
+      "name": "Run SkillDeck (no build)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/SkillDeck.app/Contents/MacOS/SkillDeck",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "presentation": {
+        "group": "app",
+        "order": 2
+      }
+    }
+  ]
+}

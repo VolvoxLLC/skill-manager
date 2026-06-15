@@ -28,3 +28,7 @@ public struct URLSessionHTTPClient: HTTPClient {
 public protocol SkillSearchProviding: Sendable {
     func search(query: String, limit: Int) async throws -> [SkillSummary]
 }
+
+public protocol SkillTrendingProviding: Sendable {
+    func trending(limit: Int) async throws -> [SkillSummary]
+}

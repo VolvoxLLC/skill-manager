@@ -44,6 +44,7 @@ A project-local `DerivedData/` path is used so builds are reproducible and easy 
 ## MVP scope
 
 - Search skills.sh through the public `/api/search` endpoint.
+- Show the skills.sh trending leaderboard on Discover load (parsed from the `/trending` RSC payload).
 - Scan public GitHub repositories for `SKILL.md`.
 - Preview copy installs into user-approved folders.
 - Detect local modifications with content hashes.

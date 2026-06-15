@@ -6,54 +6,42 @@ struct LogsView: View {
     @State private var filterText = ""
 
     var body: some View {
-        LiquidGlassPanel {
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    SkillDeckHeader(
-                        title: "Logs",
-                        subtitle: "Searchable local activity with path redaction."
-                    )
-                    TextField("Filter logs", text: $filterText)
-                        .textFieldStyle(.roundedBorder)
-                }
-                .padding(16)
-                .background(.thinMaterial)
+        VStack(spacing: 0) {
+            searchBar
+            logList
+        }
+    }
 
-                List(filteredLogs) { entry in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(entry.category)
-                                .font(.system(.headline, design: .rounded, weight: .semibold))
-                            SkillMetricPill(text: entry.level)
-                            Spacer()
-                            Text(entry.createdAt, style: .time)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(entry.message)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(12)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.glassStroke)
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .padding(.vertical, 3)
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .foregroundStyle(.secondary)
+            TextField("Filter logs", text: $filterText)
+                .textFieldStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassCapsule(interactive: true)
+        .padding(Theme.contentPadding)
+    }
+
+    private var logList: some View {
+        ScrollView {
+            LazyVStack(spacing: Theme.glassSpacing) {
+                ForEach(filteredLogs) { entry in
+                    logCard(entry)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .overlay {
-                    if filteredLogs.isEmpty {
-                        SkillDeckEmptyState(
-                            title: "No logs",
-                            systemImage: "doc.text.magnifyingglass",
-                            description: "App activity will appear here."
-                        )
-                    }
-                }
+            }
+            .padding(.horizontal, Theme.contentPadding)
+            .padding(.bottom, Theme.contentPadding)
+        }
+        .overlay {
+            if filteredLogs.isEmpty {
+                SkillDeckEmptyState(
+                    title: "No logs",
+                    systemImage: "doc.text.magnifyingglass",
+                    description: "App activity will appear here."
+                )
             }
         }
     }
@@ -66,5 +54,24 @@ struct LogsView: View {
                 || entry.level.localizedCaseInsensitiveContains(query)
                 || entry.message.localizedCaseInsensitiveContains(query)
         }
+    }
+
+    private func logCard(_ entry: AppLogEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(entry.category)
+                    .font(.headline)
+                SkillMetricPill(text: entry.level)
+                Spacer()
+                Text(entry.createdAt, style: .time)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(entry.message)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.contentPadding)
+        .glassCard()
     }
 }

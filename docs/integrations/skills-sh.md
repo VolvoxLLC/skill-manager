@@ -16,6 +16,25 @@ The response provides skill IDs, names, install counts, and `owner/repo` sources
 The authenticated `/api/v1/*` endpoints require Vercel OIDC and are **not** used by the MVP.
 There is no backend proxy.
 
+## Trending
+
+The Discover screen loads the skills.sh trending leaderboard on first appearance, before the
+user searches. skills.sh exposes **no public JSON API** for trending; its `/trending` page is
+rendered with Next.js React Server Components. `SkillsShTrendingProvider` requests the RSC
+payload:
+
+```text
+GET https://www.skills.sh/trending?_rsc=1   (header: RSC: 1)
+```
+
+It extracts the embedded skill objects — which share the search response shape
+(`source`, `skillId`, `name`, `installs`) — dedupes by `source/skillId`, sorts by install
+count descending, and maps them into `SkillSummary` values.
+
+This format is **undocumented and unstable**. If the RSC layout changes, parsing yields an
+empty list (no crash); the user can still search. Non-200 responses surface as
+`sourceUnavailable`.
+
 ## Install content
 
 Install and preview content comes from public GitHub repositories resolved from search

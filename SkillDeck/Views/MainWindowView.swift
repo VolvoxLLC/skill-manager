@@ -12,12 +12,12 @@ private enum SidebarSelection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .discover: "magnifyingglass"
+        case .discover: "sparkle.magnifyingglass"
         case .installed: "tray.full"
         case .sources: "point.3.connected.trianglepath.dotted"
         case .updates: "arrow.triangle.2.circlepath"
         case .logs: "doc.text.magnifyingglass"
-        case .settings: "slider.horizontal.3"
+        case .settings: "gearshape"
         }
     }
 }
@@ -36,16 +36,14 @@ struct MainWindowView: View {
                 Label(LocalizedStringKey(item.rawValue), systemImage: item.systemImage)
                     .tag(item)
             }
-            .scrollContentBackground(.hidden)
+            .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } content: {
             contentView
                 .frame(minWidth: 420)
-                .padding(14)
         } detail: {
             SkillInspectorView(workspace: workspace)
                 .frame(minWidth: 320)
-                .padding(14)
         }
         .navigationTitle("SkillDeck")
         .controlSize(compactModeEnabled ? .small : .regular)
@@ -62,7 +60,7 @@ struct MainWindowView: View {
             )
             .ignoresSafeArea()
         }
-        .tint(Color.systemAccent)
+        .tint(.systemAccent)
         .task {
             if !didApplyDefaultLandingPage {
                 selection = SidebarSelection(rawValue: defaultLandingPage) ?? .discover
@@ -76,9 +74,7 @@ struct MainWindowView: View {
                     preview: preview,
                     onCancel: { workspace.pendingInstallPreview = nil },
                     onInstall: {
-                        Task {
-                            try? await workspace.installSelectedSkill()
-                        }
+                        Task { try? await workspace.installSelectedSkill() }
                     }
                 )
             }
@@ -127,10 +123,11 @@ struct MainWindowView: View {
         case .logs:
             LogsView(workspace: workspace)
         case .settings:
-            LiquidGlassPanel {
-                SkillDeckSettingsView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            SkillDeckSettingsView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(Theme.contentPadding)
+                .glassCard()
+                .padding(Theme.contentPadding)
         case nil:
             Text("Select a section.")
                 .foregroundStyle(.secondary)
