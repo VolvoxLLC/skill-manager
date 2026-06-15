@@ -30,6 +30,17 @@ struct InstalledView: View {
             .overlay {
                 if viewModel.isLoading {
                     ProgressView()
+                } else if viewModel.needsAccess {
+                    ContentUnavailableView {
+                        Label("Grant folder access", systemImage: "folder.badge.questionmark")
+                    } description: {
+                        Text(viewModel.errorMessage ?? "SkillDeck needs permission to read your skills folders.")
+                    } actions: {
+                        Button("Grant Access…") {
+                            Task { await viewModel.requestAccess() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else if viewModel.skills.isEmpty {
                     ContentUnavailableView("No installed skills", systemImage: "tray", description: Text("Installed skills will appear here."))
                 } else if viewModel.filteredSkills.isEmpty {
