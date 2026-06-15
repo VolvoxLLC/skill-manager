@@ -4,7 +4,14 @@ import SkillDeckCore
 public struct SkillInstaller: Sendable {
     public init() {}
 
-    public func install(skillMarkdown: String, preview: InstallPreview) async throws {
+    public func install(skillMarkdown: String, preview: InstallPreview, expectedContentHash: String? = nil) async throws {
+        if let expectedContentHash {
+            let actualContentHash = ContentHasher.sha256Hex(skillMarkdown)
+            guard actualContentHash == expectedContentHash else {
+                throw SkillDeckError.hashMismatchAfterWrite(expected: expectedContentHash, actual: actualContentHash)
+            }
+        }
+
         for destination in preview.destinations {
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(),
@@ -13,12 +20,24 @@ public struct SkillInstaller: Sendable {
 
             let temporaryFile = destination.deletingLastPathComponent()
                 .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
-            try skillMarkdown.write(to: temporaryFile, atomically: true, encoding: .utf8)
+            do {
+                try skillMarkdown.write(to: temporaryFile, atomically: true, encoding: .utf8)
+            } catch {
+                try? FileManager.default.removeItem(at: temporaryFile)
+                throw error
+            }
 
             if FileManager.default.fileExists(atPath: destination.path) {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: temporaryFile, to: destination)
+
+            if let expectedContentHash {
+                let actualHash = ContentHasher.sha256Hex(try Data(contentsOf: destination))
+                guard actualHash == expectedContentHash else {
+                    throw SkillDeckError.hashMismatchAfterWrite(expected: expectedContentHash, actual: actualHash)
+                }
+            }
         }
     }
 

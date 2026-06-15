@@ -4,6 +4,11 @@
 
 **Goal:** Build the first real SkillDeck MVP: a native macOS SwiftUI app that discovers skills, scans public GitHub sources, previews and copies installs into approved folders, checks updates, handles conflicts/backups, logs operations, and gates Sentry/Amplitude behind consent.
 
+**Implementation status:** Implemented in this workspace. The app project is generated from
+`project.yml` with `rtk xcodegen generate`; `SkillDeck.xcodeproj/` is intentionally ignored.
+Current verification should use `rtk swift test`, then generated-project `rtk xcodebuild`
+build/test commands with a clean or isolated `-derivedDataPath`.
+
 **Architecture:** Use a small Swift package for testable business logic and an Xcode macOS app target for the native SwiftUI shell. Keep network, filesystem, persistence, telemetry, and UI behind protocols so core workflows can be tested without touching user files or external services.
 
 **Tech Stack:** Swift 6.2, SwiftUI, SwiftData, URLSession, CryptoKit, OSLog, XCTest, Xcode 26.3, Sentry Apple SDK (`https://github.com/getsentry/sentry-cocoa.git`), Amplitude Swift SDK (`https://github.com/amplitude/Amplitude-Swift`).

@@ -2,25 +2,43 @@ import SkillDeckCore
 import SwiftUI
 
 struct DiscoverView: View {
-    @StateObject var viewModel: DiscoverViewModel
+    @ObservedObject var workspace: SkillDeckWorkspaceViewModel
     @State private var query = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchBar
-            List(viewModel.results) { skill in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(skill.name).font(.headline)
-                    Text(skill.source.location).font(.caption).foregroundStyle(.secondary)
-                    if let installCount = skill.installCount {
-                        Text("\(installCount) installs").font(.caption2).foregroundStyle(.secondary)
-                    }
+        LiquidGlassPanel {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    SkillDeckHeader(
+                        title: "Catalog",
+                        subtitle: "Top downloaded skills appear first. Search narrows the catalog without losing source context."
+                    )
+                    searchBar
                 }
-                .padding(.vertical, 4)
-            }
-            .overlay {
-                if viewModel.results.isEmpty && !viewModel.isLoading {
-                    ContentUnavailableView("Search skills", systemImage: "magnifyingglass", description: Text("Find skills from skills.sh."))
+                .padding(16)
+                .background(.thinMaterial)
+
+                List(Array(displayedSkills.enumerated()), id: \.element.id) { index, skill in
+                    Button {
+                        Task { await workspace.selectSkill(skill.id) }
+                    } label: {
+                        skillRow(skill, rank: index + 1)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .padding(.vertical, 3)
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .overlay {
+                    if displayedSkills.isEmpty {
+                        SkillDeckEmptyState(
+                            title: "No catalog results",
+                            systemImage: "magnifyingglass",
+                            description: "SkillDeck could not load skills from skills.sh."
+                        )
+                    }
                 }
             }
         }
@@ -31,13 +49,56 @@ struct DiscoverView: View {
             TextField("Search skills", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit {
-                    Task { await viewModel.search(query) }
+                    Task { await workspace.search(query) }
                 }
             Button("Refresh") {
-                Task { await viewModel.search(query) }
+                Task {
+                    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        await workspace.loadInitialCatalog()
+                    } else {
+                        await workspace.search(query)
+                    }
+                }
             }
-            .disabled(query.count < 2 || viewModel.isLoading)
+            .keyboardShortcut("r", modifiers: [.command])
         }
-        .padding()
+    }
+
+    private var displayedSkills: [SkillSummary] {
+        var summaries = workspace.searchResults.isEmpty ? workspace.catalogSkills : workspace.searchResults
+        let knownIDs = Set(summaries.map(\.id))
+        summaries.append(contentsOf: workspace.availableSkills.map(\.summary).filter { !knownIDs.contains($0.id) })
+        return summaries
+    }
+
+    private func skillRow(_ skill: SkillSummary, rank: Int) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(rank.formatted())
+                .font(.system(.caption, design: .rounded, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .background(.thinMaterial, in: Circle())
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(skill.name)
+                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                Text(skill.description.isEmpty ? skill.source.location : skill.description)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                HStack {
+                    SkillMetricPill(text: skill.source.location, systemImage: "link")
+                    if let installCount = skill.installCount {
+                        SkillMetricPill(text: "\(installCount.formatted()) installs", systemImage: "arrow.down.circle")
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.glassStroke)
+        }
     }
 }
