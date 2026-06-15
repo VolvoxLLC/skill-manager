@@ -17,6 +17,9 @@ struct DiscoverView: View {
                     }
                 }
                 .padding(.vertical, 4)
+                .onAppear {
+                    viewModel.loadMoreIfNeeded(currentItem: skill)
+                }
             }
             .overlay {
                 if viewModel.isLoading {

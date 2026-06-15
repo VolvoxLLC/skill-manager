@@ -42,7 +42,7 @@ struct MainWindowView: View {
                 trendingProvider: dependencies.trendingProvider
             ))
         case .installed:
-            InstalledView(viewModel: InstalledViewModel())
+            InstalledView(viewModel: InstalledViewModel(scanner: dependencies.installedScanner))
         case .sources:
             SourcesView(viewModel: SourcesViewModel())
         case .updates:
