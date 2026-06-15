@@ -76,9 +76,9 @@ struct DiscoverView: View {
         .overlay {
             if displayedSkills.isEmpty {
                 SkillDeckEmptyState(
-                    title: "No catalog results",
+                    title: hasActiveSearch ? "No matching skills" : "No catalog results",
                     systemImage: "sparkle.magnifyingglass",
-                    description: workspace.errorMessage ?? "SkillDeck could not load skills from skills.sh."
+                    description: hasActiveSearch ? "Try a different search." : (workspace.errorMessage ?? "SkillDeck could not load skills from skills.sh.")
                 )
             }
         }
@@ -91,7 +91,15 @@ struct DiscoverView: View {
 
         var summaries = workspace.catalogSkills
         let knownIDs = Set(summaries.map(\.id))
-        summaries.append(contentsOf: workspace.availableSkills.map(\.summary).filter { !knownIDs.contains($0.id) })
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let additionalSkills = workspace.availableSkills.map(\.summary).filter { skill in
+            !knownIDs.contains(skill.id)
+                && (trimmedQuery.isEmpty
+                    || skill.name.localizedCaseInsensitiveContains(trimmedQuery)
+                    || skill.description.localizedCaseInsensitiveContains(trimmedQuery)
+                    || skill.source.location.localizedCaseInsensitiveContains(trimmedQuery))
+        }
+        summaries.append(contentsOf: additionalSkills)
         return summaries
     }
 

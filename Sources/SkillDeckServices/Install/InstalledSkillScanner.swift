@@ -98,7 +98,7 @@ public struct InstalledSkillScanner: Sendable {
                     )
                 } catch {
                     Self.logger.warning(
-                        "Skipped invalid installed skill file \(skillFile.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                        "Skipped invalid installed skill file \(skillFile.path, privacy: .private): \(error.localizedDescription, privacy: .private)"
                     )
                     continue
                 }
