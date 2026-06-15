@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SkillDeckCore
 
 public struct InstalledSkillScanRoot: Equatable, Sendable {
@@ -45,6 +46,8 @@ public struct ScannedInstalledSkill: Equatable, Sendable {
 }
 
 public struct InstalledSkillScanner: Sendable {
+    private static let logger = Logger(subsystem: "com.volvox.SkillDeck", category: "InstalledSkillScanner")
+
     public init() {}
 
     public static func defaultRoots(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> [InstalledSkillScanRoot] {
@@ -94,6 +97,9 @@ public struct InstalledSkillScanner: Sendable {
                         )
                     )
                 } catch {
+                    Self.logger.warning(
+                        "Skipped invalid installed skill file \(skillFile.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
                     continue
                 }
             }

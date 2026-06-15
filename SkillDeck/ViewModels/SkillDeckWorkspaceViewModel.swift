@@ -184,11 +184,17 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             let scannedRoots = scanResult.scannedRootURLs.map(\.standardizedFileURL)
 
             installedSkills.removeAll { installedSkill in
+                if scannedRoots.isEmpty {
+                    return installedSkill.sourceKind == .local
+                        && !scannedDestinations.contains(installedSkill.destination.standardizedFileURL)
+                }
+
                 guard scannedRoots.contains(where: { isDescendant(installedSkill.destination, of: $0) }) else {
                     return false
                 }
                 return !scannedDestinations.contains(installedSkill.destination.standardizedFileURL)
             }
+
             let installedSkillIDs = Set(installedSkills.map(\.id))
             availableUpdates.removeAll { !installedSkillIDs.contains($0.installedSkillID) }
 

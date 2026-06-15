@@ -197,6 +197,42 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertTrue(viewModel.availableUpdates.isEmpty)
     }
+
+
+    func testSyncInstalledSkillsClearsLocalRowsWhenNoRootsRemainAccessible() async throws {
+        let root = try temporaryDirectory()
+        let agentsRoot = root.appendingPathComponent(".agents/skills", isDirectory: true)
+        let skillFile = agentsRoot.appendingPathComponent("repo-helper/SKILL.md")
+        let markdown = skillMarkdown(name: "repo-helper", description: "Repo helper")
+        let provider = MutableInstalledSkillProvider(result: InstalledSkillScanResult(
+            skills: [ScannedInstalledSkill(
+                name: "repo-helper",
+                description: "Repo helper",
+                targetKind: .codex,
+                targetDisplayName: "Codex",
+                rootURL: agentsRoot,
+                destination: skillFile,
+                skillMarkdown: markdown,
+                installedHash: ContentHasher.sha256Hex(markdown)
+            )],
+            scannedRootURLs: [agentsRoot]
+        ))
+        let viewModel = SkillDeckWorkspaceViewModel(
+            searchProvider: MockSearchProvider(results: []),
+            detailProvider: MockSkillDetailProvider(scans: [:]),
+            folderGrants: InMemoryFolderGrantStore(),
+            backupRoot: try temporaryDirectory(),
+            installedSkillProvider: provider
+        )
+
+        await viewModel.syncInstalledSkills()
+        XCTAssertEqual(viewModel.installedSkills.map(\.name), ["repo-helper"])
+
+        provider.result = InstalledSkillScanResult(skills: [], scannedRootURLs: [])
+        await viewModel.syncInstalledSkills()
+
+        XCTAssertTrue(viewModel.installedSkills.isEmpty)
+    }
 }
 
 private struct SearchRequest: Equatable {
@@ -263,6 +299,18 @@ private struct MockSkillDetailProvider: SkillDetailProviding {
 private struct FailingSkillDetailProvider: SkillDetailProviding {
     func scan(source: String) async throws -> [SkillDetail] {
         throw SkillDeckError.sourceUnavailable("Unexpected scan for \(source)")
+    }
+}
+
+private final class MutableInstalledSkillProvider: InstalledSkillProviding, @unchecked Sendable {
+    var result: InstalledSkillScanResult
+
+    init(result: InstalledSkillScanResult) {
+        self.result = result
+    }
+
+    func scanInstalledSkills() async throws -> InstalledSkillScanResult {
+        result
     }
 }
 
