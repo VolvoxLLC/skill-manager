@@ -23,8 +23,27 @@ final class GitHubSkillSourceProviderTests: XCTestCase {
         XCTAssertEqual(details.count, 1)
         XCTAssertEqual(details[0].summary.name, "swiftui-helper")
         XCTAssertEqual(details[0].sourceCommit, "abc123")
+        XCTAssertEqual(details[0].summary.source.location, "owner/repo")
         XCTAssertEqual(details[0].readmeMarkdown, "# Readme")
         XCTAssertEqual(details[0].relativePath, "skills/swiftui-helper/SKILL.md")
+    }
+
+    func testPreservesRefQualifiedSourceLocationForUpdates() async throws {
+        let files = [
+            "skills/ref-skill/SKILL.md": """
+            ---
+            name: ref-skill
+            description: Ref skill
+            ---
+            """
+        ]
+        let client = MockGitHubRepositoryClient(files: files, commit: "abc123")
+        let provider = GitHubSkillSourceProvider(client: client)
+
+        let details = try await provider.scan(source: "owner/repo#release")
+
+        XCTAssertEqual(details[0].summary.id.rawValue, "owner/repo#release/ref-skill")
+        XCTAssertEqual(details[0].summary.source.location, "owner/repo#release")
     }
 
     func testGitHubRepositoryClientFetchesTreeAndMarkdownFiles() async throws {

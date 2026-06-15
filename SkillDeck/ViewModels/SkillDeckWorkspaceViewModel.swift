@@ -104,7 +104,7 @@ struct SkillUpdateViewState: Identifiable, Equatable {
 
 struct SkillConflictViewState: Equatable {
     let path: String
-    let installedSkillID: UUID
+    let installedSkillID: UUID?
     let upstreamDetail: SkillDetail
     let installPreview: InstallPreview?
     let conflictingDestination: URL
@@ -125,6 +125,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let searchProvider: SkillSearchProviding
+    private let trendingProvider: SkillTrendingProviding
     private let detailProvider: SkillDetailProviding
     private let folderGrants: FolderGrantManaging
     private let backupManager: BackupManager
@@ -136,6 +137,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
 
     init(
         searchProvider: SkillSearchProviding = SkillsShSearchProvider(),
+        trendingProvider: SkillTrendingProviding = SkillsShTrendingProvider(),
         detailProvider: SkillDetailProviding = GitHubSkillSourceProvider(),
         folderGrants: FolderGrantManaging = InMemoryFolderGrantStore(),
         backupRoot: URL = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -147,6 +149,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
         installedSkillProvider: InstalledSkillProviding? = nil
     ) {
         self.searchProvider = searchProvider
+        self.trendingProvider = trendingProvider
         self.detailProvider = detailProvider
         self.folderGrants = folderGrants
         self.backupManager = BackupManager(backupRoot: backupRoot)
@@ -168,7 +171,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
 
     func loadInitialCatalog() async {
         do {
-            let results = try await searchProvider.search(query: "skill", limit: 25)
+            let results = try await trendingProvider.trending(limit: 25)
             catalogSkills = sortedByInstallCount(results)
             searchResults = catalogSkills
             await appendLog(category: "Discovery", message: "Loaded \(catalogSkills.count) top skills")
@@ -375,7 +378,8 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             return
         }
 
-        guard let installedSkill = installedSkills.first(where: { $0.id == pendingConflict.installedSkillID }) else {
+        guard let installedSkillID = pendingConflict.installedSkillID,
+              let installedSkill = installedSkills.first(where: { $0.id == installedSkillID }) else {
             return
         }
 
@@ -431,12 +435,12 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             pendingInstallPreview = nil
             pendingConflict = SkillConflictViewState(
                 path: conflict.destination.path,
-                installedSkillID: conflict.installedSkill.id,
+                installedSkillID: conflict.installedSkill?.id,
                 upstreamDetail: skill,
                 installPreview: preview,
                 conflictingDestination: conflict.destination
             )
-            await appendLog(category: "Install", message: "Conflict detected for \(conflict.installedSkill.name)")
+            await appendLog(category: "Install", message: "Conflict detected for \(conflict.installedSkill?.name ?? skill.summary.name)")
             return
         }
 
@@ -485,15 +489,18 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             installedHash: upstream.contentHash,
             latestBackup: backup
         )
+        mergeAvailableSkills([upstream])
+        if selectedSkill?.summary.id == upstream.summary.id {
+            selectedSkill = upstream
+        }
         availableUpdates.removeAll { $0.installedSkillID == installedSkill.id }
         await appendLog(category: "Update", message: "Updated \(upstream.summary.name)")
     }
 
-    private func firstConflict(in preview: InstallPreview) throws -> (installedSkill: InstalledSkillViewState, destination: URL)? {
-        for destination in preview.destinations {
-            guard FileManager.default.fileExists(atPath: destination.path),
-                  let installedSkill = installedSkills.first(where: { $0.destination == destination }) else {
-                continue
+    private func firstConflict(in preview: InstallPreview) throws -> (installedSkill: InstalledSkillViewState?, destination: URL)? {
+        for destination in preview.destinations where FileManager.default.fileExists(atPath: destination.path) {
+            guard let installedSkill = installedSkills.first(where: { $0.destination == destination }) else {
+                return (nil, destination)
             }
 
             if try hasLocalModification(installedSkill) {
@@ -598,7 +605,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             installedSkills[index].sourceKind = preservesManagedSource ? installedSkills[index].sourceKind : .local
             installedSkills[index].sourceLocation = preservesManagedSource ? installedSkills[index].sourceLocation : scannedSkill.rootURL.path
             installedSkills[index].targetDisplayName = scannedSkill.targetDisplayName
-            installedSkills[index].installedHash = scannedSkill.installedHash
+            installedSkills[index].installedHash = preservesManagedSource ? installedSkills[index].installedHash : scannedSkill.installedHash
             installedSkills[index].sourceCommit = preservesManagedSource ? installedSkills[index].sourceCommit : nil
         } else {
             installedSkills.append(

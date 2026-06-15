@@ -4,6 +4,7 @@ import SwiftUI
 struct DiscoverView: View {
     @ObservedObject var workspace: SkillDeckWorkspaceViewModel
     @State private var query = ""
+    @State private var hasActiveSearch = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,10 +19,14 @@ struct DiscoverView: View {
                 .foregroundStyle(.secondary)
             TextField("Search skills", text: $query)
                 .textFieldStyle(.plain)
-                .onSubmit { Task { await workspace.search(query) } }
+                .onSubmit {
+                    hasActiveSearch = true
+                    Task { await workspace.search(query) }
+                }
             if !query.isEmpty {
                 Button {
                     query = ""
+                    hasActiveSearch = false
                     Task { await workspace.loadInitialCatalog() }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -33,8 +38,10 @@ struct DiscoverView: View {
             Button {
                 Task {
                     if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        hasActiveSearch = false
                         await workspace.loadInitialCatalog()
                     } else {
+                        hasActiveSearch = true
                         await workspace.search(query)
                     }
                 }
@@ -78,7 +85,11 @@ struct DiscoverView: View {
     }
 
     private var displayedSkills: [SkillSummary] {
-        var summaries = workspace.searchResults.isEmpty ? workspace.catalogSkills : workspace.searchResults
+        guard !hasActiveSearch else {
+            return workspace.searchResults
+        }
+
+        var summaries = workspace.catalogSkills
         let knownIDs = Set(summaries.map(\.id))
         summaries.append(contentsOf: workspace.availableSkills.map(\.summary).filter { !knownIDs.contains($0.id) })
         return summaries

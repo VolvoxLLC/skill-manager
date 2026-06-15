@@ -7,13 +7,14 @@ import SkillDeckSources
 @MainActor
 final class SkillDeckWorkspaceViewModelTests: XCTestCase {
     func testInitialCatalogLoadsTopDownloadedSkillsInDescendingInstallOrder() async {
-        let searchProvider = RecordingSearchProvider(results: [
+        let trendingProvider = RecordingTrendingProvider(results: [
             SkillSummary.fixture(name: "middle", installCount: 50),
             SkillSummary.fixture(name: "top", installCount: 200),
             SkillSummary.fixture(name: "low", installCount: 2)
         ])
         let viewModel = SkillDeckWorkspaceViewModel(
-            searchProvider: searchProvider,
+            searchProvider: MockSearchProvider(results: []),
+            trendingProvider: trendingProvider,
             detailProvider: MockSkillDetailProvider(scans: [:]),
             folderGrants: InMemoryFolderGrantStore(),
             backupRoot: FileManager.default.temporaryDirectory
@@ -21,7 +22,7 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
 
         await viewModel.loadInitialCatalog()
 
-        XCTAssertEqual(searchProvider.requests, [SearchRequest(query: "skill", limit: 25)])
+        XCTAssertEqual(trendingProvider.requests, [25])
         XCTAssertEqual(viewModel.catalogSkills.map(\.name), ["top", "middle", "low"])
     }
 
@@ -29,7 +30,8 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
         let summary = SkillSummary.fixture(name: "catalog-demo", installCount: 10)
         let detail = SkillDetail.fixture(name: "catalog-demo", markdown: skillMarkdown(name: "catalog-demo", description: "Catalog demo"))
         let viewModel = SkillDeckWorkspaceViewModel(
-            searchProvider: MockSearchProvider(results: [summary]),
+            searchProvider: MockSearchProvider(results: []),
+            trendingProvider: MockTrendingProvider(results: [summary]),
             detailProvider: MockSkillDetailProvider(scans: ["owner/repo": [detail]]),
             folderGrants: InMemoryFolderGrantStore(),
             backupRoot: FileManager.default.temporaryDirectory
@@ -129,8 +131,12 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
         try await viewModel.installSelectedSkill()
 
         let installedFile = destinationRoot.appendingPathComponent("demo/SKILL.md")
+        let installedHashBeforeSync = viewModel.installedSkills[0].installedHash
         try "local edit".write(to: installedFile, atomically: true, encoding: .utf8)
         detailProvider.scans = ["owner/repo": [versionTwo]]
+
+        await viewModel.syncInstalledSkills()
+        XCTAssertEqual(viewModel.installedSkills[0].installedHash, installedHashBeforeSync)
 
         await viewModel.checkForUpdates()
         XCTAssertEqual(viewModel.availableUpdates.map(\.skillName), ["demo"])
@@ -140,6 +146,7 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
 
         try await viewModel.backupAndOverwriteConflict()
         XCTAssertEqual(try String(contentsOf: installedFile), versionTwo.skillMarkdown)
+        XCTAssertEqual(viewModel.selectedSkill?.skillMarkdown, versionTwo.skillMarkdown)
         XCTAssertNotNil(viewModel.installedSkills[0].latestBackup)
         let installedID = viewModel.installedSkills[0].id
 
@@ -151,6 +158,34 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
 
         try viewModel.restoreLatestBackup(for: viewModel.installedSkills[0].id)
         XCTAssertEqual(try String(contentsOf: installedFile), "local edit")
+    }
+
+    func testExistingUntrackedDestinationRequiresConflictConfirmation() async throws {
+        let destinationRoot = try temporaryDirectory()
+        let detail = SkillDetail.fixture(name: "demo", markdown: skillMarkdown(name: "demo", description: "Demo"))
+        let viewModel = SkillDeckWorkspaceViewModel(
+            searchProvider: MockSearchProvider(results: []),
+            detailProvider: MockSkillDetailProvider(scans: ["owner/repo": [detail]]),
+            folderGrants: InMemoryFolderGrantStore(),
+            backupRoot: try temporaryDirectory()
+        )
+
+        await viewModel.addGitHubSource("owner/repo")
+        await viewModel.selectSkill(detail.summary.id)
+        viewModel.grantInstallFolder(destinationRoot, kind: .codex, displayName: "Codex")
+        await viewModel.previewSelectedSkillForInstall()
+        let installedFile = destinationRoot.appendingPathComponent("demo/SKILL.md")
+        try FileManager.default.createDirectory(at: installedFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "manual local skill".write(to: installedFile, atomically: true, encoding: .utf8)
+
+        try await viewModel.installSelectedSkill()
+
+        XCTAssertEqual(viewModel.pendingConflict?.path, installedFile.path)
+        XCTAssertEqual(try String(contentsOf: installedFile), "manual local skill")
+
+        try await viewModel.backupAndOverwriteConflict()
+        XCTAssertEqual(try String(contentsOf: installedFile), detail.skillMarkdown)
+        XCTAssertNil(viewModel.pendingConflict)
     }
 
     func testSyncInstalledSkillsRemovesDeletedFilesFromTrackedState() async throws {
@@ -251,6 +286,28 @@ private final class RecordingSearchProvider: SkillSearchProviding, @unchecked Se
     func search(query: String, limit: Int) async throws -> [SkillSummary] {
         requests.append(SearchRequest(query: query, limit: limit))
         return results
+    }
+}
+
+private final class RecordingTrendingProvider: SkillTrendingProviding, @unchecked Sendable {
+    private(set) var requests: [Int] = []
+    private let results: [SkillSummary]
+
+    init(results: [SkillSummary]) {
+        self.results = results
+    }
+
+    func trending(limit: Int) async throws -> [SkillSummary] {
+        requests.append(limit)
+        return results
+    }
+}
+
+private struct MockTrendingProvider: SkillTrendingProviding {
+    let results: [SkillSummary]
+
+    func trending(limit: Int) async throws -> [SkillSummary] {
+        Array(results.prefix(limit))
     }
 }
 

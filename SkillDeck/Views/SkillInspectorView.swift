@@ -133,6 +133,23 @@ struct SkillInspectorView: View {
         panel.prompt = "Grant Access"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        workspace.grantInstallFolder(url, kind: kind, displayName: displayName)
+        guard let installFolder = validatedInstallFolder(url, kind: kind) else { return }
+        workspace.grantInstallFolder(installFolder, kind: kind, displayName: displayName)
+    }
+
+    private func validatedInstallFolder(_ url: URL, kind: AgentTargetKind) -> URL? {
+        switch kind {
+        case .codex:
+            if url.lastPathComponent == "skills", url.deletingLastPathComponent().lastPathComponent == ".codex" {
+                return url
+            }
+            if url.lastPathComponent == ".codex" {
+                return url.appendingPathComponent("skills", isDirectory: true)
+            }
+            workspace.errorMessage = "Select the Codex skills folder (~/.codex/skills) or its ~/.codex parent."
+            return nil
+        default:
+            return url
+        }
     }
 }
