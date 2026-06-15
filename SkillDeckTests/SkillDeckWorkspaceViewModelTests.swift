@@ -65,6 +65,16 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.installedSkills[0].sourceLocation, agentsRoot.path)
     }
 
+    func testGrantedAgentSkillFoldersAreScannedDirectly() {
+        let codexSkills = URL(fileURLWithPath: "/Users/test/.codex/skills", isDirectory: true)
+        let codexParent = URL(fileURLWithPath: "/Users/test/.codex", isDirectory: true)
+        let claudeSkills = URL(fileURLWithPath: "/Users/test/.claude/skills", isDirectory: true)
+
+        XCTAssertEqual(FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: codexSkills).map(\.url.path), [codexSkills.path])
+        XCTAssertEqual(FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: codexParent).map(\.url.path), [codexSkills.path])
+        XCTAssertEqual(FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: claudeSkills).map(\.targetKind), [.claudeCode])
+    }
+
     func testSelectingSyncedInstalledSkillLoadsDetailsIntoInspectorState() async throws {
         let root = try temporaryDirectory()
         let agentsRoot = root.appendingPathComponent(".agents/skills", isDirectory: true)
@@ -188,6 +198,50 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.pendingConflict)
     }
 
+    func testSyncInstalledSkillsPreservesPersistedManagedMetadataAfterRelaunch() async throws {
+        let root = try temporaryDirectory()
+        let codexRoot = root.appendingPathComponent(".codex/skills", isDirectory: true)
+        let skillFile = codexRoot.appendingPathComponent("demo/SKILL.md")
+        let installedMarkdown = skillMarkdown(name: "demo", description: "Version one")
+        try writeSkill(at: skillFile, name: "demo", description: "Version one")
+        let installedHash = ContentHasher.sha256Hex(installedMarkdown)
+        let managedStore = InMemoryManagedInstallStore(records: [
+            ManagedInstalledSkillRecord(
+                skillID: SkillID("owner/repo/demo"),
+                name: "demo",
+                description: "Version one",
+                sourceKind: .github,
+                sourceLocation: "owner/repo",
+                targetDisplayName: "Managed",
+                destination: skillFile,
+                installedHash: installedHash,
+                sourceCommit: "abc123"
+            )
+        ])
+        let upstream = SkillDetail.fixture(name: "demo", markdown: skillMarkdown(name: "demo", description: "Version two"))
+        let viewModel = SkillDeckWorkspaceViewModel(
+            searchProvider: MockSearchProvider(results: []),
+            detailProvider: MockSkillDetailProvider(scans: ["owner/repo": [upstream]]),
+            folderGrants: InMemoryFolderGrantStore(),
+            backupRoot: try temporaryDirectory(),
+            installedSkillProvider: FileSystemInstalledSkillProvider(roots: [
+                InstalledSkillScanRoot(url: codexRoot, targetKind: .codex, displayName: "Codex")
+            ]),
+            managedInstallStore: managedStore
+        )
+
+        await viewModel.syncInstalledSkills()
+
+        XCTAssertEqual(viewModel.installedSkills[0].sourceKind, .github)
+        XCTAssertEqual(viewModel.installedSkills[0].sourceLocation, "owner/repo")
+        XCTAssertEqual(viewModel.installedSkills[0].installedHash, installedHash)
+        XCTAssertEqual(viewModel.installedSkills[0].sourceCommit, "abc123")
+        XCTAssertEqual(viewModel.availableSkills[0].summary.source.kind, .github)
+
+        await viewModel.checkForUpdates()
+        XCTAssertEqual(viewModel.availableUpdates.map(\.skillName), ["demo"])
+    }
+
     func testSyncInstalledSkillsRemovesDeletedFilesFromTrackedState() async throws {
         let root = try temporaryDirectory()
         let agentsRoot = root.appendingPathComponent(".agents/skills", isDirectory: true)
@@ -205,11 +259,15 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
 
         await viewModel.syncInstalledSkills()
         XCTAssertEqual(viewModel.installedSkills.map(\.name), ["repo-helper"])
+        await viewModel.selectInstalledSkill(viewModel.installedSkills[0].id)
+        XCTAssertEqual(viewModel.availableSkills.map(\.summary.name), ["repo-helper"])
 
         try FileManager.default.removeItem(at: skillFile.deletingLastPathComponent())
         await viewModel.syncInstalledSkills()
 
         XCTAssertTrue(viewModel.installedSkills.isEmpty)
+        XCTAssertFalse(viewModel.availableSkills.contains { $0.summary.name == "repo-helper" })
+        XCTAssertNil(viewModel.selectedSkill)
     }
 
     func testCheckForUpdatesSkipsLocalOnlyInstalledSkills() async throws {
@@ -368,6 +426,29 @@ private final class MutableInstalledSkillProvider: InstalledSkillProviding, @unc
 
     func scanInstalledSkills() async throws -> InstalledSkillScanResult {
         result
+    }
+}
+
+private final class InMemoryManagedInstallStore: ManagedInstalledSkillPersisting {
+    var records: [ManagedInstalledSkillRecord]
+
+    init(records: [ManagedInstalledSkillRecord] = []) {
+        self.records = records
+    }
+
+    func loadRecords() -> [ManagedInstalledSkillRecord] {
+        records
+    }
+
+    func save(_ record: ManagedInstalledSkillRecord) {
+        let destination = record.destination.standardizedFileURL
+        records.removeAll { $0.destination.standardizedFileURL == destination }
+        records.append(record)
+    }
+
+    func removeRecords(for destinations: Set<URL>) {
+        let standardizedDestinations = Set(destinations.map(\.standardizedFileURL))
+        records.removeAll { standardizedDestinations.contains($0.destination.standardizedFileURL) }
     }
 }
 

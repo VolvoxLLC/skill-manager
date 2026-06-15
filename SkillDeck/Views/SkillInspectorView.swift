@@ -76,8 +76,16 @@ struct SkillInspectorView: View {
             }
 
             HStack {
+                Button("Grant Claude Code Folder") {
+                    chooseInstallFolder(kind: .claudeCode, displayName: "Claude Code")
+                }
+                .buttonStyle(.bordered)
                 Button("Grant Codex Folder") {
                     chooseInstallFolder(kind: .codex, displayName: "Codex")
+                }
+                .buttonStyle(.bordered)
+                Button("Grant Copilot Folder") {
+                    chooseInstallFolder(kind: .githubCopilot, displayName: "GitHub Copilot")
                 }
                 .buttonStyle(.bordered)
                 Button("Preview Install") {
@@ -139,17 +147,25 @@ struct SkillInspectorView: View {
 
     private func validatedInstallFolder(_ url: URL, kind: AgentTargetKind) -> URL? {
         switch kind {
+        case .claudeCode:
+            return validatedAgentSkillsFolder(url, agentDirectory: ".claude", displayName: "Claude Code")
         case .codex:
-            if url.lastPathComponent == "skills", url.deletingLastPathComponent().lastPathComponent == ".codex" {
-                return url
-            }
-            if url.lastPathComponent == ".codex" {
-                return url.appendingPathComponent("skills", isDirectory: true)
-            }
-            workspace.errorMessage = "Select the Codex skills folder (~/.codex/skills) or its ~/.codex parent."
-            return nil
-        default:
+            return validatedAgentSkillsFolder(url, agentDirectory: ".codex", displayName: "Codex")
+        case .githubCopilot:
+            return validatedAgentSkillsFolder(url, agentDirectory: ".copilot", displayName: "GitHub Copilot")
+        case .genericFilesystem:
             return url
         }
+    }
+
+    private func validatedAgentSkillsFolder(_ url: URL, agentDirectory: String, displayName: String) -> URL? {
+        if url.lastPathComponent == "skills", url.deletingLastPathComponent().lastPathComponent == agentDirectory {
+            return url
+        }
+        if url.lastPathComponent == agentDirectory {
+            return url.appendingPathComponent("skills", isDirectory: true)
+        }
+        workspace.errorMessage = "Select the \(displayName) skills folder (~/\(agentDirectory)/skills) or its ~/\(agentDirectory) parent."
+        return nil
     }
 }

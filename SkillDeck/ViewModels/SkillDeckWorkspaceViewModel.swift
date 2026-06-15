@@ -62,7 +62,7 @@ struct FileSystemInstalledSkillProvider: InstalledSkillProviding {
             }
         }
 
-        let roots = SkillDeckServices.InstalledSkillScanner.defaultRoots(homeDirectory: grantedRoot)
+        let roots = Self.scanRoots(forGrantedRoot: grantedRoot)
         let scannedRoots = roots
             .map(\.url)
             .filter { FileManager.default.fileExists(atPath: $0.path) }
@@ -70,6 +70,37 @@ struct FileSystemInstalledSkillProvider: InstalledSkillProviding {
             skills: try scanner.scan(roots: roots),
             scannedRootURLs: scannedRoots
         )
+    }
+
+    static func scanRoots(forGrantedRoot grantedRoot: URL) -> [SkillDeckServices.InstalledSkillScanRoot] {
+        let grantedRoot = grantedRoot.standardizedFileURL
+        let rootConfigurations: [(agentDirectory: String, targetKind: AgentTargetKind, displayName: String)] = [
+            (".agents", .codex, "Agents"),
+            (".claude", .claudeCode, "Claude Code"),
+            (".codex", .codex, "Codex"),
+            (".copilot", .githubCopilot, "GitHub Copilot")
+        ]
+
+        for configuration in rootConfigurations {
+            if grantedRoot.lastPathComponent == "skills",
+               grantedRoot.deletingLastPathComponent().lastPathComponent == configuration.agentDirectory {
+                return [SkillDeckServices.InstalledSkillScanRoot(
+                    url: grantedRoot,
+                    targetKind: configuration.targetKind,
+                    displayName: configuration.displayName
+                )]
+            }
+
+            if grantedRoot.lastPathComponent == configuration.agentDirectory {
+                return [SkillDeckServices.InstalledSkillScanRoot(
+                    url: grantedRoot.appendingPathComponent("skills", isDirectory: true),
+                    targetKind: configuration.targetKind,
+                    displayName: configuration.displayName
+                )]
+            }
+        }
+
+        return SkillDeckServices.InstalledSkillScanner.defaultRoots(homeDirectory: grantedRoot)
     }
 }
 
@@ -100,6 +131,73 @@ struct SkillUpdateViewState: Identifiable, Equatable {
     let upstreamDetail: SkillDetail
     let installedHash: String
     let upstreamHash: String
+}
+
+struct ManagedInstalledSkillRecord: Codable, Equatable {
+    let skillID: SkillID
+    let name: String
+    let description: String
+    let sourceKind: SkillSourceKind
+    let sourceLocation: String
+    let targetDisplayName: String
+    let destination: URL
+    let installedHash: String
+    let sourceCommit: String?
+}
+
+extension ManagedInstalledSkillRecord {
+    init(_ installedSkill: InstalledSkillViewState) {
+        skillID = installedSkill.skillID
+        name = installedSkill.name
+        description = installedSkill.description
+        sourceKind = installedSkill.sourceKind
+        sourceLocation = installedSkill.sourceLocation
+        targetDisplayName = installedSkill.targetDisplayName
+        destination = installedSkill.destination
+        installedHash = installedSkill.installedHash
+        sourceCommit = installedSkill.sourceCommit
+    }
+}
+
+protocol ManagedInstalledSkillPersisting {
+    func loadRecords() -> [ManagedInstalledSkillRecord]
+    func save(_ record: ManagedInstalledSkillRecord)
+    func removeRecords(for destinations: Set<URL>)
+}
+
+final class UserDefaultsManagedInstalledSkillStore: ManagedInstalledSkillPersisting {
+    private let defaults: UserDefaults
+    private let key: String
+
+    init(defaults: UserDefaults = .standard, key: String = "managedInstalledSkills") {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    func loadRecords() -> [ManagedInstalledSkillRecord] {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([ManagedInstalledSkillRecord].self, from: data)) ?? []
+    }
+
+    func save(_ record: ManagedInstalledSkillRecord) {
+        var records = loadRecords()
+        let destination = record.destination.standardizedFileURL
+        records.removeAll { $0.destination.standardizedFileURL == destination }
+        records.append(record)
+        save(records)
+    }
+
+    func removeRecords(for destinations: Set<URL>) {
+        guard !destinations.isEmpty else { return }
+        let standardizedDestinations = Set(destinations.map(\.standardizedFileURL))
+        let records = loadRecords().filter { !standardizedDestinations.contains($0.destination.standardizedFileURL) }
+        save(records)
+    }
+
+    private func save(_ records: [ManagedInstalledSkillRecord]) {
+        guard let data = try? JSONEncoder().encode(records) else { return }
+        defaults.set(data, forKey: key)
+    }
 }
 
 struct SkillConflictViewState: Equatable {
@@ -133,6 +231,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
     private let logger: InMemoryAppLogService
     private let installedSkillsBookmarkStore: SecurityScopedBookmarkStore
     private let installedSkillProvider: InstalledSkillProviding
+    private let managedInstallStore: ManagedInstalledSkillPersisting
     private var hasBootstrapped = false
 
     init(
@@ -146,7 +245,8 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
         installer: SkillInstaller = SkillInstaller(),
         logger: InMemoryAppLogService = InMemoryAppLogService(),
         installedSkillsBookmarkStore: SecurityScopedBookmarkStore = SecurityScopedBookmarkStore(),
-        installedSkillProvider: InstalledSkillProviding? = nil
+        installedSkillProvider: InstalledSkillProviding? = nil,
+        managedInstallStore: ManagedInstalledSkillPersisting = UserDefaultsManagedInstalledSkillStore()
     ) {
         self.searchProvider = searchProvider
         self.trendingProvider = trendingProvider
@@ -157,6 +257,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
         self.logger = logger
         self.installedSkillsBookmarkStore = installedSkillsBookmarkStore
         self.installedSkillProvider = installedSkillProvider ?? FileSystemInstalledSkillProvider(bookmarkStore: installedSkillsBookmarkStore)
+        self.managedInstallStore = managedInstallStore
     }
 
     func bootstrap() async {
@@ -185,6 +286,20 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             let scanResult = try await installedSkillProvider.scanInstalledSkills()
             let scannedDestinations = Set(scanResult.skills.map { $0.destination.standardizedFileURL })
             let scannedRoots = scanResult.scannedRootURLs.map(\.standardizedFileURL)
+            let persistedManagedRecords = managedInstallStore.loadRecords()
+            var persistedManagedByDestination: [URL: ManagedInstalledSkillRecord] = [:]
+            for record in persistedManagedRecords {
+                persistedManagedByDestination[record.destination.standardizedFileURL] = record
+            }
+            let staleManagedDestinations = persistedManagedRecords.compactMap { record -> URL? in
+                let destination = record.destination.standardizedFileURL
+                guard scannedRoots.contains(where: { isDescendant(destination, of: $0) }),
+                      !scannedDestinations.contains(destination) else {
+                    return nil
+                }
+                return destination
+            }
+            managedInstallStore.removeRecords(for: Set(staleManagedDestinations))
 
             installedSkills.removeAll { installedSkill in
                 if scannedRoots.isEmpty {
@@ -200,10 +315,12 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
 
             let installedSkillIDs = Set(installedSkills.map(\.id))
             availableUpdates.removeAll { !installedSkillIDs.contains($0.installedSkillID) }
+            pruneStaleLocalDetails(scannedSkillIDs: Set(scanResult.skills.map { localSkillID(for: $0) }), scannedRoots: scannedRoots)
 
             for scannedSkill in scanResult.skills {
-                mergeAvailableSkills([detail(from: scannedSkill)])
-                upsertInstalledSkill(scannedSkill)
+                let persistedManagedRecord = persistedManagedByDestination[scannedSkill.destination.standardizedFileURL]
+                mergeAvailableSkills([detail(from: scannedSkill, persistedManagedRecord: persistedManagedRecord)])
+                upsertInstalledSkill(scannedSkill, persistedManagedRecord: persistedManagedRecord)
             }
             await appendLog(category: "Install", message: "Synced \(scanResult.skills.count) installed skills")
         } catch {
@@ -402,6 +519,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
 
         try installer.restoreBackup(from: latestBackup.url, to: latestBackup.destination)
         installedSkills[index].installedHash = latestBackup.oldHash
+        persistManagedInstalledSkill(installedSkills[index])
     }
 
     func selectInstalledSkill(_ installedSkillID: UUID) async {
@@ -563,24 +681,30 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             installedSkills[index].installedHash = installedHash
             installedSkills[index].sourceCommit = skill.sourceCommit
             installedSkills[index].latestBackup = latestBackup ?? installedSkills[index].latestBackup
+            persistManagedInstalledSkill(installedSkills[index])
             return
         }
 
-        installedSkills.append(
-            InstalledSkillViewState(
-                id: UUID(),
-                skillID: skill.summary.id,
-                name: skill.summary.name,
-                description: skill.summary.description,
-                sourceKind: skill.summary.source.kind,
-                sourceLocation: skill.summary.source.location,
-                targetDisplayName: "Managed",
-                destination: destination,
-                installedHash: installedHash,
-                sourceCommit: skill.sourceCommit,
-                latestBackup: latestBackup
-            )
+        let installedSkill = InstalledSkillViewState(
+            id: UUID(),
+            skillID: skill.summary.id,
+            name: skill.summary.name,
+            description: skill.summary.description,
+            sourceKind: skill.summary.source.kind,
+            sourceLocation: skill.summary.source.location,
+            targetDisplayName: "Managed",
+            destination: destination,
+            installedHash: installedHash,
+            sourceCommit: skill.sourceCommit,
+            latestBackup: latestBackup
         )
+        installedSkills.append(installedSkill)
+        persistManagedInstalledSkill(installedSkill)
+    }
+
+    private func persistManagedInstalledSkill(_ installedSkill: InstalledSkillViewState) {
+        guard installedSkill.sourceKind == .github else { return }
+        managedInstallStore.save(ManagedInstalledSkillRecord(installedSkill))
     }
 
     private func mergeAvailableSkills(_ details: [SkillDetail]) {
@@ -594,19 +718,42 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
         availableSkills.sort { $0.summary.name.localizedCaseInsensitiveCompare($1.summary.name) == .orderedAscending }
     }
 
-    private func upsertInstalledSkill(_ scannedSkill: ScannedInstalledSkill) {
-        let skillID = SkillID("\(scannedSkill.rootURL.path)/\(scannedSkill.name)")
+    private func pruneStaleLocalDetails(scannedSkillIDs: Set<SkillID>, scannedRoots: [URL]) {
+        availableSkills.removeAll { detail in
+            guard detail.summary.source.kind == .local else { return false }
+            guard !scannedRoots.isEmpty else { return true }
 
-        if let index = installedSkills.firstIndex(where: { $0.destination == scannedSkill.destination }) {
-            let preservesManagedSource = installedSkills[index].sourceKind == .github
-            installedSkills[index].skillID = preservesManagedSource ? installedSkills[index].skillID : skillID
+            let sourceURL = URL(fileURLWithPath: detail.summary.source.location, isDirectory: true).standardizedFileURL
+            guard scannedRoots.contains(where: { isDescendant(sourceURL, of: $0) || isDescendant($0, of: sourceURL) }) else {
+                return false
+            }
+            return !scannedSkillIDs.contains(detail.summary.id)
+        }
+
+        if let selectedSkill,
+           selectedSkill.summary.source.kind == .local,
+           !availableSkills.contains(where: { $0.summary.id == selectedSkill.summary.id }) {
+            self.selectedSkill = nil
+        }
+    }
+
+    private func localSkillID(for scannedSkill: ScannedInstalledSkill) -> SkillID {
+        SkillID("\(scannedSkill.rootURL.path)/\(scannedSkill.name)")
+    }
+
+    private func upsertInstalledSkill(_ scannedSkill: ScannedInstalledSkill, persistedManagedRecord: ManagedInstalledSkillRecord? = nil) {
+        let skillID = persistedManagedRecord?.skillID ?? localSkillID(for: scannedSkill)
+
+        if let index = installedSkills.firstIndex(where: { $0.destination.standardizedFileURL == scannedSkill.destination.standardizedFileURL }) {
+            let preservesManagedSource = installedSkills[index].sourceKind == .github || persistedManagedRecord != nil
+            installedSkills[index].skillID = preservesManagedSource ? skillID : localSkillID(for: scannedSkill)
             installedSkills[index].name = scannedSkill.name
             installedSkills[index].description = scannedSkill.description
-            installedSkills[index].sourceKind = preservesManagedSource ? installedSkills[index].sourceKind : .local
-            installedSkills[index].sourceLocation = preservesManagedSource ? installedSkills[index].sourceLocation : scannedSkill.rootURL.path
+            installedSkills[index].sourceKind = preservesManagedSource ? (persistedManagedRecord?.sourceKind ?? installedSkills[index].sourceKind) : .local
+            installedSkills[index].sourceLocation = preservesManagedSource ? (persistedManagedRecord?.sourceLocation ?? installedSkills[index].sourceLocation) : scannedSkill.rootURL.path
             installedSkills[index].targetDisplayName = scannedSkill.targetDisplayName
-            installedSkills[index].installedHash = preservesManagedSource ? installedSkills[index].installedHash : scannedSkill.installedHash
-            installedSkills[index].sourceCommit = preservesManagedSource ? installedSkills[index].sourceCommit : nil
+            installedSkills[index].installedHash = preservesManagedSource ? (persistedManagedRecord?.installedHash ?? installedSkills[index].installedHash) : scannedSkill.installedHash
+            installedSkills[index].sourceCommit = preservesManagedSource ? (persistedManagedRecord?.sourceCommit ?? installedSkills[index].sourceCommit) : nil
         } else {
             installedSkills.append(
                 InstalledSkillViewState(
@@ -614,24 +761,31 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
                     skillID: skillID,
                     name: scannedSkill.name,
                     description: scannedSkill.description,
-                    sourceKind: .local,
-                    sourceLocation: scannedSkill.rootURL.path,
+                    sourceKind: persistedManagedRecord?.sourceKind ?? .local,
+                    sourceLocation: persistedManagedRecord?.sourceLocation ?? scannedSkill.rootURL.path,
                     targetDisplayName: scannedSkill.targetDisplayName,
                     destination: scannedSkill.destination,
-                    installedHash: scannedSkill.installedHash,
-                    sourceCommit: nil,
+                    installedHash: persistedManagedRecord?.installedHash ?? scannedSkill.installedHash,
+                    sourceCommit: persistedManagedRecord?.sourceCommit,
                     latestBackup: nil
                 )
             )
         }
 
         installedSkills.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        if let installedSkill = installedSkills.first(where: { $0.destination.standardizedFileURL == scannedSkill.destination.standardizedFileURL }) {
+            persistManagedInstalledSkill(installedSkill)
+        }
     }
 
-    private func detail(from scannedSkill: ScannedInstalledSkill) -> SkillDetail {
-        let source = SkillSourceReference(kind: .local, location: scannedSkill.rootURL.path, trusted: true)
+    private func detail(from scannedSkill: ScannedInstalledSkill, persistedManagedRecord: ManagedInstalledSkillRecord? = nil) -> SkillDetail {
+        let source = SkillSourceReference(
+            kind: persistedManagedRecord?.sourceKind ?? .local,
+            location: persistedManagedRecord?.sourceLocation ?? scannedSkill.rootURL.path,
+            trusted: true
+        )
         let summary = SkillSummary(
-            id: SkillID("\(scannedSkill.rootURL.path)/\(scannedSkill.name)"),
+            id: persistedManagedRecord?.skillID ?? localSkillID(for: scannedSkill),
             name: scannedSkill.name,
             description: scannedSkill.description,
             source: source,
@@ -644,7 +798,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
             summary: summary,
             readmeMarkdown: "",
             skillMarkdown: scannedSkill.skillMarkdown,
-            sourceCommit: nil,
+            sourceCommit: persistedManagedRecord?.sourceCommit,
             contentHash: scannedSkill.installedHash,
             relativePath: scannedSkill.destination.path.replacingOccurrences(of: scannedSkill.rootURL.path + "/", with: "")
         )
