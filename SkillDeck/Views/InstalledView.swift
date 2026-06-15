@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct InstalledView: View {
@@ -16,9 +17,14 @@ struct InstalledView: View {
             HStack {
                 SkillDeckHeader(
                     title: "Installed",
-                    subtitle: "Synced from ~/.agents/skills, ~/.claude/skills, ~/.codex/skills, and ~/.copilot/skills."
+                    subtitle: "Synced from user-granted agent skill folders. Grant access to scan ~/.agents, ~/.claude, ~/.codex, and ~/.copilot."
                 )
                 Spacer()
+                Button("Grant Access…") {
+                    chooseInstalledSkillsFolder()
+                }
+                .buttonStyle(.bordered)
+                .help("Grant folder access for installed-skill scanning")
                 Button {
                     Task { await workspace.syncInstalledSkills() }
                 } label: {
@@ -60,7 +66,7 @@ struct InstalledView: View {
                 SkillDeckEmptyState(
                     title: "No installed skills",
                     systemImage: "tray",
-                    description: "Local agent skill folders are empty or unavailable."
+                    description: "Grant access to an enclosing folder, then sync installed agent skills."
                 )
             } else if filteredSkills.isEmpty {
                 SkillDeckEmptyState(
@@ -89,7 +95,11 @@ struct InstalledView: View {
                     .font(.headline)
                 Spacer()
                 Button {
-                    try? workspace.restoreLatestBackup(for: skill.id)
+                    do {
+                        try workspace.restoreLatestBackup(for: skill.id)
+                    } catch {
+                        workspace.errorMessage = error.localizedDescription
+                    }
                 } label: {
                     Image(systemName: "arrow.uturn.backward.circle")
                 }
@@ -113,5 +123,17 @@ struct InstalledView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.contentPadding)
         .glassCard(interactive: true)
+    }
+
+    private func chooseInstalledSkillsFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Select your home folder or another enclosing folder so SkillDeck can read installed agent skills."
+        panel.prompt = "Grant Access"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await workspace.grantInstalledSkillsFolder(url) }
     }
 }

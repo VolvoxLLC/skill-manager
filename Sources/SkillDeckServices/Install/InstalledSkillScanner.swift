@@ -78,20 +78,24 @@ public struct InstalledSkillScanner: Sendable {
         for root in roots where FileManager.default.fileExists(atPath: root.url.path) {
             let skillFiles = try skillManifestURLs(inside: root.url)
             for skillFile in skillFiles {
-                let markdown = try String(contentsOf: skillFile, encoding: .utf8)
-                let manifest = try SkillManifestParser.parse(markdown)
-                scannedSkills.append(
-                    ScannedInstalledSkill(
-                        name: manifest.name,
-                        description: manifest.description,
-                        targetKind: root.targetKind,
-                        targetDisplayName: root.displayName,
-                        rootURL: root.url,
-                        destination: skillFile,
-                        skillMarkdown: markdown,
-                        installedHash: ContentHasher.sha256Hex(markdown)
+                do {
+                    let markdown = try String(contentsOf: skillFile, encoding: .utf8)
+                    let manifest = try SkillManifestParser.parse(markdown)
+                    scannedSkills.append(
+                        ScannedInstalledSkill(
+                            name: manifest.name,
+                            description: manifest.description,
+                            targetKind: root.targetKind,
+                            targetDisplayName: root.displayName,
+                            rootURL: root.url,
+                            destination: skillFile,
+                            skillMarkdown: markdown,
+                            installedHash: ContentHasher.sha256Hex(markdown)
+                        )
                     )
-                )
+                } catch {
+                    continue
+                }
             }
         }
 

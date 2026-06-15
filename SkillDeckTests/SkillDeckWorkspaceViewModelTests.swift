@@ -116,7 +116,10 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
             searchProvider: MockSearchProvider(results: []),
             detailProvider: detailProvider,
             folderGrants: InMemoryFolderGrantStore(),
-            backupRoot: backupRoot
+            backupRoot: backupRoot,
+            installedSkillProvider: FileSystemInstalledSkillProvider(roots: [
+                InstalledSkillScanRoot(url: destinationRoot, targetKind: .codex, displayName: "Codex")
+            ])
         )
 
         await viewModel.addGitHubSource("owner/repo")
@@ -138,9 +141,61 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
         try await viewModel.backupAndOverwriteConflict()
         XCTAssertEqual(try String(contentsOf: installedFile), versionTwo.skillMarkdown)
         XCTAssertNotNil(viewModel.installedSkills[0].latestBackup)
+        let installedID = viewModel.installedSkills[0].id
+
+        await viewModel.syncInstalledSkills()
+        XCTAssertEqual(viewModel.installedSkills[0].id, installedID)
+        XCTAssertEqual(viewModel.installedSkills[0].sourceKind, .github)
+        XCTAssertEqual(viewModel.installedSkills[0].sourceLocation, "owner/repo")
+        XCTAssertNotNil(viewModel.installedSkills[0].latestBackup)
 
         try viewModel.restoreLatestBackup(for: viewModel.installedSkills[0].id)
         XCTAssertEqual(try String(contentsOf: installedFile), "local edit")
+    }
+
+    func testSyncInstalledSkillsRemovesDeletedFilesFromTrackedState() async throws {
+        let root = try temporaryDirectory()
+        let agentsRoot = root.appendingPathComponent(".agents/skills", isDirectory: true)
+        let skillFile = agentsRoot.appendingPathComponent("repo-helper/SKILL.md")
+        try writeSkill(at: skillFile, name: "repo-helper", description: "Repo helper")
+        let viewModel = SkillDeckWorkspaceViewModel(
+            searchProvider: MockSearchProvider(results: []),
+            detailProvider: MockSkillDetailProvider(scans: [:]),
+            folderGrants: InMemoryFolderGrantStore(),
+            backupRoot: try temporaryDirectory(),
+            installedSkillProvider: FileSystemInstalledSkillProvider(roots: [
+                InstalledSkillScanRoot(url: agentsRoot, targetKind: .codex, displayName: "Codex")
+            ])
+        )
+
+        await viewModel.syncInstalledSkills()
+        XCTAssertEqual(viewModel.installedSkills.map(\.name), ["repo-helper"])
+
+        try FileManager.default.removeItem(at: skillFile.deletingLastPathComponent())
+        await viewModel.syncInstalledSkills()
+
+        XCTAssertTrue(viewModel.installedSkills.isEmpty)
+    }
+
+    func testCheckForUpdatesSkipsLocalOnlyInstalledSkills() async throws {
+        let root = try temporaryDirectory()
+        let agentsRoot = root.appendingPathComponent(".agents/skills", isDirectory: true)
+        try writeSkill(at: agentsRoot.appendingPathComponent("repo-helper/SKILL.md"), name: "repo-helper", description: "Repo helper")
+        let viewModel = SkillDeckWorkspaceViewModel(
+            searchProvider: MockSearchProvider(results: []),
+            detailProvider: FailingSkillDetailProvider(),
+            folderGrants: InMemoryFolderGrantStore(),
+            backupRoot: try temporaryDirectory(),
+            installedSkillProvider: FileSystemInstalledSkillProvider(roots: [
+                InstalledSkillScanRoot(url: agentsRoot, targetKind: .codex, displayName: "Codex")
+            ])
+        )
+
+        await viewModel.syncInstalledSkills()
+        await viewModel.checkForUpdates()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertTrue(viewModel.availableUpdates.isEmpty)
     }
 }
 
@@ -202,6 +257,12 @@ private struct MockSkillDetailProvider: SkillDetailProviding {
 
     func scan(source: String) async throws -> [SkillDetail] {
         scans[source] ?? []
+    }
+}
+
+private struct FailingSkillDetailProvider: SkillDetailProviding {
+    func scan(source: String) async throws -> [SkillDetail] {
+        throw SkillDeckError.sourceUnavailable("Unexpected scan for \(source)")
     }
 }
 

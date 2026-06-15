@@ -32,6 +32,22 @@ final class InstalledSkillScannerTests: XCTestCase {
             "/Users/test/.copilot/skills"
         ])
     }
+
+    func testScanSkipsMalformedSkillFilesAndKeepsValidSkills() throws {
+        let root = try temporaryDirectory()
+        let agentsRoot = root.appendingPathComponent(".agents/skills", isDirectory: true)
+        try writeSkill(at: agentsRoot.appendingPathComponent("valid/SKILL.md"), name: "valid", description: "Valid skill")
+        let invalidFile = agentsRoot.appendingPathComponent("broken/SKILL.md")
+        try FileManager.default.createDirectory(at: invalidFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "not frontmatter".write(to: invalidFile, atomically: true, encoding: .utf8)
+
+        let scanner = InstalledSkillScanner()
+        let installedSkills = try scanner.scan(roots: [
+            InstalledSkillScanRoot(url: agentsRoot, targetKind: .codex, displayName: "Codex")
+        ])
+
+        XCTAssertEqual(installedSkills.map(\.name), ["valid"])
+    }
 }
 
 private func writeSkill(at url: URL, name: String, description: String) throws {

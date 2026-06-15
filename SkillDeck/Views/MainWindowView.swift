@@ -74,7 +74,13 @@ struct MainWindowView: View {
                     preview: preview,
                     onCancel: { workspace.pendingInstallPreview = nil },
                     onInstall: {
-                        Task { try? await workspace.installSelectedSkill() }
+                        Task {
+                            do {
+                                try await workspace.installSelectedSkill()
+                            } catch {
+                                workspace.errorMessage = error.localizedDescription
+                            }
+                        }
                     }
                 )
             }
@@ -87,7 +93,13 @@ struct MainWindowView: View {
                         Task { await workspace.keepLocalConflict() }
                     },
                     backupAndOverwrite: {
-                        Task { try? await workspace.backupAndOverwriteConflict() }
+                        Task {
+                            do {
+                                try await workspace.backupAndOverwriteConflict()
+                            } catch {
+                                workspace.errorMessage = error.localizedDescription
+                            }
+                        }
                     }
                 )
             }
