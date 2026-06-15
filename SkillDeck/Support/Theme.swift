@@ -9,8 +9,7 @@ enum Theme {
     /// Corner radius used for Liquid Glass cards and grouped content.
     static let cardCornerRadius: CGFloat = 16
 
-    /// Spacing between sibling glass elements inside a `GlassEffectContainer`,
-    /// which controls how aggressively they morph into one another.
+    /// Spacing between sibling glass-styled elements.
     static let glassSpacing: CGFloat = 12
 
     /// Standard inset for content padded against a glass surface.
@@ -33,8 +32,33 @@ extension View {
     /// - Parameter interactive: When `true`, the glass reacts to pointer and
     ///   press interactions, suitable for tappable rows and controls.
     /// - Returns: A view rendered on a Liquid Glass surface.
+    @ViewBuilder
     func glassCard(interactive: Bool = false) -> some View {
-        let glass: Glass = interactive ? .regular.interactive() : .regular
-        return self.glassEffect(glass, in: .rect(cornerRadius: Theme.cardCornerRadius))
+        if #available(macOS 26.0, *) {
+            let glass: Glass = interactive ? .regular.interactive() : .regular
+            self.glassEffect(glass, in: .rect(cornerRadius: Theme.cardCornerRadius))
+        } else {
+            self
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.cardCornerRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.cardCornerRadius, style: .continuous)
+                        .strokeBorder(Color.glassStroke)
+                }
+        }
+    }
+
+    @ViewBuilder
+    func glassCapsule(interactive: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            let glass: Glass = interactive ? .regular.interactive() : .regular
+            self.glassEffect(glass, in: .capsule)
+        } else {
+            self
+                .background(.thinMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(Color.glassStroke)
+                }
+        }
     }
 }

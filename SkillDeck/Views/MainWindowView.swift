@@ -24,7 +24,11 @@ private enum SidebarSelection: String, CaseIterable, Identifiable {
 
 struct MainWindowView: View {
     @State private var selection: SidebarSelection? = .discover
-    @StateObject private var dependencies = DependencyContainer()
+    @StateObject private var workspace = SkillDeckWorkspaceViewModel()
+    @AppStorage("defaultLandingPage") private var defaultLandingPage = "Discover"
+    @AppStorage("appearanceMode") private var appearanceMode = "System"
+    @AppStorage("compactModeEnabled") private var compactModeEnabled = false
+    @State private var didApplyDefaultLandingPage = false
 
     var body: some View {
         NavigationSplitView {
@@ -38,36 +42,137 @@ struct MainWindowView: View {
             contentView
                 .frame(minWidth: 420)
         } detail: {
-            SkillInspectorView()
+            SkillInspectorView(workspace: workspace)
                 .frame(minWidth: 320)
         }
-        .environmentObject(dependencies)
         .navigationTitle("SkillDeck")
+        .controlSize(compactModeEnabled ? .small : .regular)
+        .preferredColorScheme(preferredColorScheme)
+        .background {
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .windowBackgroundColor),
+                    Color.systemAccent.opacity(0.08),
+                    Color(nsColor: .controlBackgroundColor)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        }
         .tint(.systemAccent)
+        .task {
+            if !didApplyDefaultLandingPage {
+                selection = SidebarSelection(rawValue: defaultLandingPage) ?? .discover
+                didApplyDefaultLandingPage = true
+            }
+            await workspace.bootstrap()
+        }
+        .sheet(isPresented: installPreviewPresented) {
+            if let preview = workspace.pendingInstallPreview {
+                InstallPreviewSheet(
+                    preview: preview,
+                    onCancel: { workspace.pendingInstallPreview = nil },
+                    onInstall: {
+                        Task {
+                            do {
+                                try await workspace.installSelectedSkill()
+                            } catch {
+                                workspace.errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: conflictPresented) {
+            if let conflict = workspace.pendingConflict {
+                ConflictResolutionSheet(
+                    path: conflict.path,
+                    keepLocal: {
+                        Task { await workspace.keepLocalConflict() }
+                    },
+                    backupAndOverwrite: {
+                        Task {
+                            do {
+                                try await workspace.backupAndOverwriteConflict()
+                            } catch {
+                                workspace.errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                )
+            }
+        }
+        .alert(
+            "SkillDeck",
+            isPresented: Binding(
+                get: { workspace.errorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        workspace.errorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(workspace.errorMessage ?? "")
+        }
     }
 
     @ViewBuilder
     private var contentView: some View {
         switch selection {
         case .discover:
-            DiscoverView(viewModel: DiscoverViewModel(
-                searchProvider: dependencies.searchProvider,
-                trendingProvider: dependencies.trendingProvider
-            ))
+            DiscoverView(workspace: workspace)
         case .installed:
-            InstalledView(viewModel: InstalledViewModel(scanner: dependencies.installedScanner))
+            InstalledView(workspace: workspace)
         case .sources:
-            SourcesView(viewModel: SourcesViewModel())
+            SourcesView(workspace: workspace)
         case .updates:
-            UpdatesView(viewModel: UpdatesViewModel())
+            UpdatesView(workspace: workspace)
         case .logs:
-            LogsView(viewModel: LogsViewModel())
+            LogsView(workspace: workspace)
         case .settings:
-            Text("Open Settings from the app menu.")
-                .foregroundStyle(.secondary)
+            SkillDeckSettingsView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(Theme.contentPadding)
+                .glassCard()
+                .padding(Theme.contentPadding)
         case nil:
             Text("Select a section.")
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var installPreviewPresented: Binding<Bool> {
+        Binding(
+            get: { workspace.pendingInstallPreview != nil },
+            set: { isPresented in
+                if !isPresented {
+                    workspace.pendingInstallPreview = nil
+                }
+            }
+        )
+    }
+
+    private var conflictPresented: Binding<Bool> {
+        Binding(
+            get: { workspace.pendingConflict != nil },
+            set: { isPresented in
+                if !isPresented {
+                    workspace.pendingConflict = nil
+                }
+            }
+        )
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case "Light": .light
+        case "Dark": .dark
+        default: nil
         }
     }
 }

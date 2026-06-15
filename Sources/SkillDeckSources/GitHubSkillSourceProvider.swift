@@ -10,6 +10,7 @@ public struct GitHubSkillSourceProvider: Sendable {
 
     public func scan(source: String) async throws -> [SkillDetail] {
         let repository = try GitHubURLParser.parse(source)
+        let sourceLocation = repository.ref.map { "\(repository.slug)#\($0)" } ?? repository.slug
         let snapshot = try await client.fetchRepositoryFiles(repository)
 
         return try snapshot.files
@@ -18,10 +19,10 @@ public struct GitHubSkillSourceProvider: Sendable {
                 let manifest = try SkillManifestParser.parse(markdown)
                 let readmePath = path.replacingOccurrences(of: "SKILL.md", with: "README.md")
                 let summary = SkillSummary(
-                    id: SkillID("\(repository.slug)/\(manifest.name)"),
+                    id: SkillID("\(sourceLocation)/\(manifest.name)"),
                     name: manifest.name,
                     description: manifest.description,
-                    source: SkillSourceReference(kind: .github, location: repository.slug, trusted: true),
+                    source: SkillSourceReference(kind: .github, location: sourceLocation, trusted: true),
                     installCount: nil,
                     tags: [],
                     lastUpdated: nil

@@ -2,67 +2,15 @@ import SkillDeckCore
 import SwiftUI
 
 struct DiscoverView: View {
-    @StateObject var viewModel: DiscoverViewModel
+    @ObservedObject var workspace: SkillDeckWorkspaceViewModel
     @State private var query = ""
+    @State private var hasActiveSearch = false
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar
             resultsList
         }
-        .task { await viewModel.loadTrending() }
-    }
-
-    private var resultsList: some View {
-        ScrollView {
-            GlassEffectContainer(spacing: Theme.glassSpacing) {
-                LazyVStack(spacing: Theme.glassSpacing) {
-                    ForEach(viewModel.results) { skill in
-                        skillCard(skill)
-                            .onAppear { viewModel.loadMoreIfNeeded(currentItem: skill) }
-                    }
-                }
-                .padding(.horizontal, Theme.contentPadding)
-                .padding(.bottom, Theme.contentPadding)
-            }
-        }
-        .overlay {
-            if viewModel.isLoading && viewModel.results.isEmpty {
-                ProgressView()
-            } else if viewModel.results.isEmpty {
-                ContentUnavailableView {
-                    Label("Search skills", systemImage: "sparkle.magnifyingglass")
-                } description: {
-                    Text(viewModel.errorMessage ?? "Find skills from skills.sh.")
-                }
-            }
-        }
-    }
-
-    private func skillCard(_ skill: SkillSummary) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(skill.name).font(.headline)
-                Spacer()
-                if let installCount = skill.installCount {
-                    Label("\(installCount)", systemImage: "arrow.down.circle")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.tint)
-                }
-            }
-            if !skill.description.isEmpty {
-                Text(skill.description)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Text(skill.source.location)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.contentPadding)
-        .glassCard(interactive: true)
     }
 
     private var searchBar: some View {
@@ -71,20 +19,118 @@ struct DiscoverView: View {
                 .foregroundStyle(.secondary)
             TextField("Search skills", text: $query)
                 .textFieldStyle(.plain)
-                .onSubmit { Task { await viewModel.search(query) } }
+                .onSubmit {
+                    hasActiveSearch = true
+                    Task { await workspace.search(query) }
+                }
             if !query.isEmpty {
                 Button {
                     query = ""
+                    hasActiveSearch = false
+                    Task { await workspace.loadInitialCatalog() }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .help("Clear search")
             }
+            Button {
+                Task {
+                    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        hasActiveSearch = false
+                        await workspace.loadInitialCatalog()
+                    } else {
+                        hasActiveSearch = true
+                        await workspace.search(query)
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.plain)
+            .help("Refresh catalog")
+            .keyboardShortcut("r", modifiers: [.command])
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .glassCapsule(interactive: true)
         .padding(Theme.contentPadding)
+    }
+
+    private var resultsList: some View {
+        ScrollView {
+            LazyVStack(spacing: Theme.glassSpacing) {
+                ForEach(Array(displayedSkills.enumerated()), id: \.element.id) { index, skill in
+                    Button {
+                        Task { await workspace.selectSkill(skill.id) }
+                    } label: {
+                        skillCard(skill, rank: index + 1)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.contentPadding)
+            .padding(.bottom, Theme.contentPadding)
+        }
+        .overlay {
+            if displayedSkills.isEmpty {
+                SkillDeckEmptyState(
+                    title: hasActiveSearch ? "No matching skills" : "No catalog results",
+                    systemImage: "sparkle.magnifyingglass",
+                    description: workspace.errorMessage ?? (hasActiveSearch ? "Try a different search." : "SkillDeck could not load skills from skills.sh.")
+                )
+            }
+        }
+    }
+
+    private var displayedSkills: [SkillSummary] {
+        guard !hasActiveSearch else {
+            return workspace.searchResults
+        }
+
+        var summaries = workspace.catalogSkills
+        let knownIDs = Set(summaries.map(\.id))
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let additionalSkills = workspace.availableSkills.map(\.summary).filter { skill in
+            !knownIDs.contains(skill.id)
+                && (trimmedQuery.isEmpty
+                    || skill.name.localizedCaseInsensitiveContains(trimmedQuery)
+                    || skill.description.localizedCaseInsensitiveContains(trimmedQuery)
+                    || skill.source.location.localizedCaseInsensitiveContains(trimmedQuery))
+        }
+        summaries.append(contentsOf: additionalSkills)
+        return summaries
+    }
+
+    private func skillCard(_ skill: SkillSummary, rank: Int) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(rank.formatted())
+                .font(.system(.caption, design: .rounded, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .background(.thinMaterial, in: Circle())
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(skill.name)
+                        .font(.headline)
+                    Spacer()
+                    if let installCount = skill.installCount {
+                        Label(installCount.formatted(), systemImage: "arrow.down.circle")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.tint)
+                    }
+                }
+                Text(skill.description.isEmpty ? skill.source.location : skill.description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                SkillMetricPill(text: skill.source.location, systemImage: "link")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.contentPadding)
+        .glassCard(interactive: true)
     }
 }

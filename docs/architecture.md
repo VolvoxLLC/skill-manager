@@ -12,7 +12,7 @@ package's products.
 - `SkillDeckPersistence`: SwiftData `@Model` records and a repository wrapper.
 - `SkillDeckServices`: install preview, conflict detection, backups, copy install/restore, update checking, folder grants, and logging.
 - `SkillDeckTelemetry`: consent-gated Sentry and Amplitude wrappers.
-- `SkillDeck` (app): the macOS SwiftUI shell — dependency container, view models, Finder-style window, sheets, and Settings.
+- `SkillDeck` (app): the macOS SwiftUI shell — dependency container, workflow view model, Finder-style window, sheets, and Settings.
 
 ## Testability
 
@@ -20,6 +20,11 @@ Services depend on protocols (`HTTPClient`, `FolderGrantChecking`, `GitHubReposi
 `SkillSearchProviding`, `TelemetrySink`) so tests can use temporary directories, mock HTTP
 responses, in-memory folder grants, and recording telemetry sinks. No test writes to real
 `~/.claude`, `~/.codex`, or `.agents` folders, and no test sends real telemetry.
+
+`SkillDeckWorkspaceViewModel` composes the package services for the app surface. It owns the
+current search results, scanned GitHub skills, selected detail, granted install folders, install
+previews, installed skill state, available updates, conflict sheets, latest-backup restore, and
+in-app log list. App-hosted tests cover the source-to-install and conflict-to-restore flows.
 
 ## Safety boundaries
 

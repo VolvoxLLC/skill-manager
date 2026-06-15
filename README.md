@@ -21,9 +21,9 @@ The Xcode project is generated from `project.yml` and is intentionally **not** c
 ## Build
 
 ```bash
-swift test
-xcodegen generate
-xcodebuild -project SkillDeck.xcodeproj -scheme SkillDeck \
+rtk swift test
+rtk xcodegen generate
+rtk xcodebuild -project SkillDeck.xcodeproj -scheme SkillDeck \
   -destination 'platform=macOS' -derivedDataPath DerivedData build
 ```
 
@@ -31,11 +31,11 @@ xcodebuild -project SkillDeck.xcodeproj -scheme SkillDeck \
 
 ```bash
 # Package (business logic) tests — fast, no GUI needed:
-swift test
+rtk swift test
 
 # App-hosted tests (view models):
-xcodegen generate
-xcodebuild -project SkillDeck.xcodeproj -scheme SkillDeck \
+rtk xcodegen generate
+rtk xcodebuild -project SkillDeck.xcodeproj -scheme SkillDeck \
   -destination 'platform=macOS' -derivedDataPath DerivedData test
 ```
 
@@ -52,6 +52,9 @@ A project-local `DerivedData/` path is used so builds are reproducible and easy 
 - Restore the latest backup.
 - Show logs and key settings.
 - Gate Sentry and Amplitude behind explicit user consent.
+- Add public GitHub sources, inspect `SKILL.md`, grant install folders, install
+  copied skills, detect update conflicts, back up overwritten files, restore the
+  latest backup, and view searchable logs.
 
 See [`docs/architecture.md`](docs/architecture.md) for the module breakdown, and
 [`docs/integrations/`](docs/integrations) for skills.sh and telemetry notes.
