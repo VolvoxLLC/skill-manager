@@ -42,6 +42,7 @@ final class GitHubSkillSourceProviderTests: XCTestCase {
 
         let details = try await provider.scan(source: "owner/repo#release")
 
+        XCTAssertEqual(details.count, 1)
         XCTAssertEqual(details[0].summary.id.rawValue, "owner/repo#release/ref-skill")
         XCTAssertEqual(details[0].summary.source.location, "owner/repo#release")
     }

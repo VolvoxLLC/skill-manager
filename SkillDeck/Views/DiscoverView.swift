@@ -78,7 +78,7 @@ struct DiscoverView: View {
                 SkillDeckEmptyState(
                     title: hasActiveSearch ? "No matching skills" : "No catalog results",
                     systemImage: "sparkle.magnifyingglass",
-                    description: hasActiveSearch ? "Try a different search." : (workspace.errorMessage ?? "SkillDeck could not load skills from skills.sh.")
+                    description: workspace.errorMessage ?? (hasActiveSearch ? "Try a different search." : "SkillDeck could not load skills from skills.sh.")
                 )
             }
         }
