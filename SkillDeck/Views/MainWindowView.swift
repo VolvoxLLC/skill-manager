@@ -37,7 +37,10 @@ struct MainWindowView: View {
     private var contentView: some View {
         switch selection {
         case .discover:
-            DiscoverView(viewModel: DiscoverViewModel(searchProvider: dependencies.searchProvider))
+            DiscoverView(viewModel: DiscoverViewModel(
+                searchProvider: dependencies.searchProvider,
+                trendingProvider: dependencies.trendingProvider
+            ))
         case .installed:
             InstalledView(viewModel: InstalledViewModel())
         case .sources:

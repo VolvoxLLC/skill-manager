@@ -19,11 +19,14 @@ struct DiscoverView: View {
                 .padding(.vertical, 4)
             }
             .overlay {
-                if viewModel.results.isEmpty && !viewModel.isLoading {
+                if viewModel.isLoading {
+                    ProgressView()
+                } else if viewModel.results.isEmpty {
                     ContentUnavailableView("Search skills", systemImage: "magnifyingglass", description: Text("Find skills from skills.sh."))
                 }
             }
         }
+        .task { await viewModel.loadTrending() }
     }
 
     private var searchBar: some View {
