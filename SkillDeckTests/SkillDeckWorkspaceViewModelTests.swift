@@ -70,8 +70,13 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
         let codexParent = URL(fileURLWithPath: "/Users/test/.codex", isDirectory: true)
         let claudeSkills = URL(fileURLWithPath: "/Users/test/.claude/skills", isDirectory: true)
 
-        XCTAssertEqual(FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: codexSkills).map(\.url.path), [codexSkills.path])
-        XCTAssertEqual(FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: codexParent).map(\.url.path), [codexSkills.path])
+        let codexFromSkills = FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: codexSkills)
+        XCTAssertEqual(codexFromSkills.map(\.url.path), [codexSkills.path])
+        XCTAssertEqual(codexFromSkills.map(\.targetKind), [.codex])
+
+        let codexFromParent = FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: codexParent)
+        XCTAssertEqual(codexFromParent.map(\.url.path), [codexSkills.path])
+        XCTAssertEqual(codexFromParent.map(\.targetKind), [.codex])
         XCTAssertEqual(FileSystemInstalledSkillProvider.scanRoots(forGrantedRoot: claudeSkills).map(\.targetKind), [.claudeCode])
     }
 
@@ -232,11 +237,16 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
 
         await viewModel.syncInstalledSkills()
 
-        XCTAssertEqual(viewModel.installedSkills[0].sourceKind, .github)
-        XCTAssertEqual(viewModel.installedSkills[0].sourceLocation, "owner/repo")
-        XCTAssertEqual(viewModel.installedSkills[0].installedHash, installedHash)
-        XCTAssertEqual(viewModel.installedSkills[0].sourceCommit, "abc123")
-        XCTAssertEqual(viewModel.availableSkills[0].summary.source.kind, .github)
+        XCTAssertEqual(viewModel.installedSkills.count, 1)
+        let installed = try XCTUnwrap(viewModel.installedSkills.first)
+        XCTAssertEqual(installed.sourceKind, .github)
+        XCTAssertEqual(installed.sourceLocation, "owner/repo")
+        XCTAssertEqual(installed.installedHash, installedHash)
+        XCTAssertEqual(installed.sourceCommit, "abc123")
+
+        XCTAssertEqual(viewModel.availableSkills.count, 1)
+        let available = try XCTUnwrap(viewModel.availableSkills.first)
+        XCTAssertEqual(available.summary.source.kind, .github)
 
         await viewModel.checkForUpdates()
         XCTAssertEqual(viewModel.availableUpdates.map(\.skillName), ["demo"])
@@ -259,7 +269,8 @@ final class SkillDeckWorkspaceViewModelTests: XCTestCase {
 
         await viewModel.syncInstalledSkills()
         XCTAssertEqual(viewModel.installedSkills.map(\.name), ["repo-helper"])
-        await viewModel.selectInstalledSkill(viewModel.installedSkills[0].id)
+        let installed = try XCTUnwrap(viewModel.installedSkills.first)
+        await viewModel.selectInstalledSkill(installed.id)
         XCTAssertEqual(viewModel.availableSkills.map(\.summary.name), ["repo-helper"])
 
         try FileManager.default.removeItem(at: skillFile.deletingLastPathComponent())

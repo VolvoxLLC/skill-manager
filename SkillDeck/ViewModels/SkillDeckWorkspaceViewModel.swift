@@ -322,6 +322,7 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
                 mergeAvailableSkills([detail(from: scannedSkill, persistedManagedRecord: persistedManagedRecord)])
                 upsertInstalledSkill(scannedSkill, persistedManagedRecord: persistedManagedRecord)
             }
+            installedSkills.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             await appendLog(category: "Install", message: "Synced \(scanResult.skills.count) installed skills")
         } catch {
             setError(error)
@@ -771,8 +772,6 @@ final class SkillDeckWorkspaceViewModel: ObservableObject {
                 )
             )
         }
-
-        installedSkills.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         if let installedSkill = installedSkills.first(where: { $0.destination.standardizedFileURL == scannedSkill.destination.standardizedFileURL }) {
             persistManagedInstalledSkill(installedSkill)
         }
